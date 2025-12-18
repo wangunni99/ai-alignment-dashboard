@@ -209,9 +209,7 @@ def create_network_map(df_matches):
             # 크기 변화 폭을 크게 설정
             size = 10 + (centrality / max_centrality) * 40 
             G.nodes[node]['size'] = size
-            G.nodes[node]['title'] = f"조직: {node}  
-연결 중심성: {centrality:.2f}  
-총 협업 강도: {G.degree(node, weight='weight'):.1f}"
+            G.nodes[node]['title'] = f"조직: {node} 연결 중심성: {centrality:.2f} 총 협업 강도: {G.degree(node, weight='weight'):.1f}"
     
     # 2. PyVis 네트워크 생성
     net = Network(height="600px", width="100%", bgcolor="#222222", font_color="white", cdn_resources='local')
