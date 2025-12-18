@@ -65,9 +65,13 @@ def preprocess_data(df, project_type):
         st.error(f"🚨 **오류:** '{project_type}' 시트에 '프로젝트명' 또는 '설명' 컬럼이 없습니다.")
         return pd.DataFrame()
 
+    # 조직명 결측값 처리: 'nan' 노드 방지를 위해 '미지정'으로 대체
+    df['PO 조직'] = df['PO 조직'].fillna('미지정')
+    df['유관 조직'] = df['유관 조직'].fillna('') # 유관 조직은 리스트로 변환되므로 빈 문자열로 처리
+
     # 조직명 정규화: 쉼표(,) 또는 줄바꿈(\n)으로 분리 후 공백 제거
     def normalize_orgs(org_str):
-        if pd.isna(org_str):
+        if pd.isna(org_str) or org_str == '':
             return []
         # 쉼표, 줄바꿈, 세미콜론 등을 구분자로 사용
         org_list = re.split(r'[,\n;]', str(org_str))
@@ -169,8 +173,7 @@ def create_network_map(df_matches):
     # 노드 추가: PO 조직
     all_orgs = pd.concat([df_matches['사업_PO_조직'], df_matches['기술_PO_조직']]).unique()
     for org in all_orgs:
-        # PyVis 호환성 문제 해결을 위해 title 속성 제거
-        G.add_node(org, group='조직', size=10)
+        G.add_node(org, group='조직')
 
     # 엣지 추가: 매칭된 프로젝트를 기반으로 조직 간 협업 관계를 엣지로 표현
     for index, row in df_matches.iterrows():
@@ -180,33 +183,49 @@ def create_network_map(df_matches):
         
         # 조직이 다를 경우에만 엣지 추가 (자기 자신과의 연결 제외)
         if org1 != org2:
-        # 186줄: if 문 시작
+            # 엣지 가중치 (유사도)를 사용하여 협업 강도 표현
             if G.has_edge(org1, org2):
-        # 187줄: 이 줄은 한 줄로 이어져 있어야 합니다.
-               G[org1][org2]['title'] += f" - {row['사업_프로젝트명']} - {row['기술_프로젝트명']} ({similarity:.2f})"
-               G[org1][org2]['weight'] += similarity
-               G[org1][org2]['label'] = f"{G[org1][org2]['weight']:.1f}"
-    # 189줄: else는 if와 같은 레벨로 들여쓰기 되어야 합니다.
-    else:
-        G.add_edge(org1, org2, 
-                   weight=similarity, 
-                   title=f"- {row['사업_프로젝트명']} - {row['기술_프로젝트명']} ({similarity:.2f})",
-                   label=f"{similarity:.1f}")
+                # 이미 엣지가 있다면 가중치 업데이트 (합산)
+                G[org1][org2]['title'] += f"  
+- {row['사업_프로젝트명']} - {row['기술_프로젝트명']} ({similarity:.2f})"
+                G[org1][org2]['weight'] += similarity
+                G[org1][org2]['label'] = f"{G[org1][org2]['weight']:.1f}"
+            else:
+                G.add_edge(org1, org2, 
+                           weight=similarity, 
+                           title=f"- {row['사업_프로젝트명']} - {row['기술_프로젝트명']} ({similarity:.2f})",
+                           label=f"{similarity:.1f}")
 
-    # 노드 크기 업데이트: 연결된 엣지 수에 비례
-    for node in G.nodes():
-        G.nodes[node]['size'] = 10 + len(G.edges(node)) * 5
+    # --- 시각화 개선 로직 ---
+    
+    # 1. 노드 크기: 연결 중심성(Degree Centrality) 반영
+    if G.number_of_nodes() > 0:
+        # 연결 중심성 계산
+        degree_centrality = nx.degree_centrality(G)
         
-    # PyVis 네트워크 생성
+        # 노드 크기 업데이트: 중심성에 비례하여 크기 설정 (최소 10, 최대 50)
+        max_centrality = max(degree_centrality.values()) if degree_centrality else 1
+        for node in G.nodes():
+            centrality = degree_centrality.get(node, 0)
+            # 크기 변화 폭을 크게 설정
+            size = 10 + (centrality / max_centrality) * 40 
+            G.nodes[node]['size'] = size
+            G.nodes[node]['title'] = f"조직: {node}  
+연결 중심성: {centrality:.2f}  
+총 협업 강도: {G.degree(node, weight='weight'):.1f}"
+    
+    # 2. PyVis 네트워크 생성
     net = Network(height="600px", width="100%", bgcolor="#222222", font_color="white", cdn_resources='local')
+    
+    # 3. 물리 엔진 설정 강화 (군집화 개선)
     net.set_options("""
     var options = {
       "physics": {
         "forceAtlas2Based": {
-          "gravitationalConstant": -26,
-          "centralGravity": 0.005,
-          "springLength": 100,
-          "springConstant": 0.18
+          "gravitationalConstant": -50,  // 인력 강화 (노드들이 더 잘 뭉침)
+          "centralGravity": 0.01,
+          "springLength": 150,
+          "springConstant": 0.08
         },
         "minVelocity": 0.75,
         "solver": "forceAtlas2Based"
@@ -227,12 +246,17 @@ def create_network_map(df_matches):
     for node in G.nodes(data=True):
         node_id = node[0]
         node_data = node[1]
-        # 노드 ID를 명확히 문자열로 전달
-        net.add_node(str(node_id), label=str(node_id), title=str(node_id), group=node_data.get('group'), size=node_data.get('size'))
+        net.add_node(str(node_id), 
+                     label=str(node_id), 
+                     title=node_data.get('title', str(node_id)), 
+                     group=node_data.get('group'), 
+                     size=node_data.get('size', 10))
     
     for edge in G.edges(data=True):
-        # 엣지 노드 ID도 명확히 문자열로 전달
-        net.add_edge(str(edge[0]), str(edge[1]), value=edge[2].get('weight'), title=edge[2].get('title'), label=edge[2].get('label'))
+        net.add_edge(str(edge[0]), str(edge[1]), 
+                     value=edge[2].get('weight'), 
+                     title=edge[2].get('title'), 
+                     label=edge[2].get('label'))
     
     # HTML 파일로 저장
     net.save_graph("network_map.html")
