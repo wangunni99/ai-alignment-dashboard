@@ -186,8 +186,7 @@ def create_network_map(df_matches):
             # 엣지 가중치 (유사도)를 사용하여 협업 강도 표현
             if G.has_edge(org1, org2):
                 # 이미 엣지가 있다면 가중치 업데이트 (합산)
-                G[org1][org2]['title'] += f"  
-- {row['사업_프로젝트명']} - {row['기술_프로젝트명']} ({similarity:.2f})"
+                G[org1][org2]['title'] += f" - {row['사업_프로젝트명']} - {row['기술_프로젝트명']} ({similarity:.2f})"
                 G[org1][org2]['weight'] += similarity
                 G[org1][org2]['label'] = f"{G[org1][org2]['weight']:.1f}"
             else:
