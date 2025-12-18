@@ -217,7 +217,7 @@ def create_network_map(df_matches):
     # 3. 물리 엔진 설정 강화 (군집화 개선)
     net.set_options("""
     var options = {
-      "physics": {
+        "physics":{
         "forceAtlas2Based": {
           "gravitationalConstant": -50,  // 인력 강화 (노드들이 더 잘 뭉침)
           "centralGravity": 0.01,
