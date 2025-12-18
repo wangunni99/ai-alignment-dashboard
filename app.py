@@ -219,7 +219,7 @@ def create_network_map(df_matches):
     {
         "physics":{
         "forceAtlas2Based": {
-          "gravitationalConstant": -50,  // 인력 강화 (노드들이 더 잘 뭉침)
+          "gravitationalConstant": -50,
           "centralGravity": 0.01,
           "springLength": 150,
           "springConstant": 0.08
